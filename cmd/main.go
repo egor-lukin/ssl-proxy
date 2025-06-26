@@ -1,68 +1,38 @@
 package cmd
 
 import (
-	"github.com/egor-lukin/ssl-proxy/internal/certs_fetcher"
-	"github.com/egor-lukin/ssl-proxy/internal/proxy_supervisor"
+	"github.com/egor-lukin/ssl-proxy/internal"
 	"github.com/spf13/cobra"
-	"time"
 	"log"
+	"time"
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "ssl-proxy",
-	Short: "SSL Proxy CLI",
-}
+var certsPath string
+var nginxSettingsPath string
+var interval string
 
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the proxy server",
-}
-
-var artifactsPath string
-var proxySettingsPath string
-
-var runProxySupervisorCmd = &cobra.Command{
-	Use:   "proxy-supervisor",
-	Short: "Run the proxy supervisor watcher",
 	Run: func(cmd *cobra.Command, args []string) {
-		proxy_supervisor.Watch(artifactsPath, proxySettingsPath)
-	},
-}
-
-var fetcherArtifactsPath string
-var fetcherInterval string
-
-var runFetcherCmd = &cobra.Command{
-	Use:   "fetcher",
-	Short: "Run the certs and challenges fetcher",
-	Run: func(cmd *cobra.Command, args []string) {
-		if fetcherInterval == "" {
-			certs_fetcher.Exec(fetcherArtifactsPath)
-			return
-		}
-		dur, err := time.ParseDuration(fetcherInterval)
+		duration, err := time.ParseDuration(interval)
 		if err != nil {
 			log.Fatalf("Invalid interval: %v", err)
+			return
 		}
-		for {
-			certs_fetcher.Exec(fetcherArtifactsPath)
-			time.Sleep(dur)
-		}
+
+		internal.RunProxy(duration, certsPath, nginxSettingsPath)
 	},
 }
 
 func init() {
-	runProxySupervisorCmd.Flags().StringVar(&artifactsPath, "artifacts", "./artifacts", "Path to artifacts directory")
-	runProxySupervisorCmd.Flags().StringVar(&proxySettingsPath, "proxy-settings", "./proxy-settings", "Path to proxy settings directory")
-	runFetcherCmd.Flags().StringVar(&fetcherArtifactsPath, "artifacts", "./artifacts", "Path to artifacts directory")
-	runFetcherCmd.Flags().StringVar(&fetcherInterval, "interval", "", "Interval to repeat fetching (e.g. 10m, 1h). If empty, runs once.")
-	runCmd.AddCommand(runProxySupervisorCmd)
-	runCmd.AddCommand(runFetcherCmd)
+	runCmd.Flags().StringVar(&certsPath, "certsPath", "./certs", "Path to certs directory")
+	runCmd.Flags().StringVar(&nginxSettingsPath, "nginxSettingsPath", "/etc/nginx/sites-enabled", "Path to nginx settings directory")
+	runCmd.Flags().StringVar(&interval, "interval", "5s", "Interval to repeat fetching (e.g. 10s, 1m). Default: 5s.")
 }
 
 func Execute() {
-	rootCmd.AddCommand(runCmd)
-	if err := rootCmd.Execute(); err != nil {
+	if err := runCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
 }

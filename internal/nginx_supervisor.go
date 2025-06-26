@@ -1,19 +1,29 @@
 package internal
 
 import (
-	"path/filepath"
-	"text/template"
-	"bytes"
-	// "os/exec"
 	"github.com/spf13/afero"
+	"os/exec"
+	"path/filepath"
 )
 
-func UpdateNginxConfig(fs afero.Fs, servers []Server, certsPath, nginxServersPath string) {
+func UpdateNginxConfig(fs afero.Fs, servers []Server, certsPath, nginxServersPath string) error {
+	var err error
 	for _, server := range servers {
-		saveCertFs(fs, server.Domain, server.Cert, certsPath)
-		saveSnippetFs(fs, server.Domain, server.Snippets, certsPath, nginxServersPath)
+		if err := saveCertFs(fs, server.Domain, server.Cert, certsPath); err != nil {
+			return err
+		}
+		if err = saveSnippetFs(fs, server.Domain, server.Snippets, certsPath, nginxServersPath); err != nil {
+			return err
+		}
 	}
-	// Omit systemctl restart for testability
+
+	cmd := exec.Command("nginx", "-s", "reload")
+	_, err = cmd.CombinedOutput()
+	if err != nil {
+		return err
+	} else {
+		return nil
+	}
 }
 
 func saveCertFs(fs afero.Fs, domain string, cert Cert, certsPath string) error {
@@ -30,14 +40,5 @@ func saveCertFs(fs afero.Fs, domain string, cert Cert, certsPath string) error {
 
 func saveSnippetFs(fs afero.Fs, domain, snippet, certsPath, nginxServersPath string) error {
 	path := filepath.Join(nginxServersPath, domain)
-	tmpl, err := template.New("nginx").Parse(snippet)
-	if err != nil {
-		return err
-	}
-	data := struct{ CertPath string }{CertPath: certsPath}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return err
-	}
-	return afero.WriteFile(fs, path, buf.Bytes(), 0644)
+	return afero.WriteFile(fs, path, []byte(snippet), 0644)
 }

@@ -1,9 +1,9 @@
 package internal
 
 import (
-	"testing"
 	"github.com/spf13/afero"
 	"path/filepath"
+	"testing"
 )
 
 func TestUpdateNginxConfig_Afero(t *testing.T) {
@@ -15,8 +15,8 @@ func TestUpdateNginxConfig_Afero(t *testing.T) {
 
 	servers := []Server{
 		{
-			Domain: "example.com",
-			Snippets: "server { listen 80; # {{.CertPath}} }",
+			Domain:   "example.com",
+			Snippets: "server { listen 80; }",
 			Cert: Cert{
 				Domain:      "example.com",
 				Certificate: "dummy-cert",
@@ -45,7 +45,7 @@ func TestUpdateNginxConfig_Afero(t *testing.T) {
 	if err != nil {
 		t.Errorf("Snippet file not created: %v", err)
 	}
-	expectedSnippet := "server { listen 80; # /certs }"
+	expectedSnippet := "server { listen 80; }"
 	if string(snippetData) != expectedSnippet {
 		t.Errorf("Snippet file content mismatch: got %q, want %q", string(snippetData), expectedSnippet)
 	}
