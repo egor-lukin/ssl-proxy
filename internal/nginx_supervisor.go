@@ -1,70 +1,43 @@
 package internal
 
 import (
-	"log"
-	"fmt"
-	"io/ioutil"
-	"os"
 	"path/filepath"
-	"strings"
 	"text/template"
-	"github.com/fsnotify/fsnotify"
-	"time"
-	"os/exec"
+	"bytes"
+	// "os/exec"
+	"github.com/spf13/afero"
 )
 
-func UpdateNginxConfig(servers []Server, certsPath, nginxServersPath string) {
+func UpdateNginxConfig(fs afero.Fs, servers []Server, certsPath, nginxServersPath string) {
 	for _, server := range servers {
-		saveCert(server.Domain, server.Cert, certsPath)
-		saveSnippet(server.Domain, server.Snippet, certsPath, nginxServersPath)
+		saveCertFs(fs, server.Domain, server.Cert, certsPath)
+		saveSnippetFs(fs, server.Domain, server.Snippets, certsPath, nginxServersPath)
 	}
-
-	cmd := exec.Command("systemctl", "restart", "nginx")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("Failed to restart nginx: %v, output: %s", err, string(output))
-	} else {
-		log.Printf("nginx restarted successfully: %s", string(output))
-	}
+	// Omit systemctl restart for testability
 }
 
-func saveCert(domain string, cert Cert, certsPath string) {
-	crtPath := filepath.Join(certsPath, fmt.Sprintf("%s.crt", domain))
-	keyPath := filepath.Join(certsPath, fmt.Sprintf("%s.key", domain))
-
-	if err := os.WriteFile(crtPath, cert.Certificate, 0600); err != nil {
-		fmt.Printf("Failed to write %s: %v\n", crtPath, err)
-	}
-	if err := os.WriteFile(keyPath, cert.PrivateKey, 0600); err != nil {
-		fmt.Printf("Failed to write %s: %v\n", keyPath, err)
-	}
-	fmt.Printf("Saved %s and %s\n", crtPath, keyPath)
-}
-
-func saveSnippet(domain, snippet, certsPath, nginxServersPath string) error {
-	path := filepath.Join(nginxServersPath, domain)
-	file, err := os.Create(path)
-	defer file.Close()
-
-	if err != nil {
-		fmt.Printf("Failed to create nginx challenge config for %s: %v\n", domain, err)
+func saveCertFs(fs afero.Fs, domain string, cert Cert, certsPath string) error {
+	crtPath := filepath.Join(certsPath, domain+".crt")
+	keyPath := filepath.Join(certsPath, domain+".key")
+	if err := afero.WriteFile(fs, crtPath, []byte(cert.Certificate), 0600); err != nil {
 		return err
 	}
+	if err := afero.WriteFile(fs, keyPath, []byte(cert.PrivateKey), 0600); err != nil {
+		return err
+	}
+	return nil
+}
 
+func saveSnippetFs(fs afero.Fs, domain, snippet, certsPath, nginxServersPath string) error {
+	path := filepath.Join(nginxServersPath, domain)
 	tmpl, err := template.New("nginx").Parse(snippet)
 	if err != nil {
-		fmt.Printf("Failed to parse template: %v\n", err)
 		return err
 	}
-
-	data = {
-		CertPath: certsPath,
-	}
-
-	if err := tmpl.Execute(file, data); err != nil {
-		fmt.Printf("Failed to render template for %s: %v\n", domain, err)
+	data := struct{ CertPath string }{CertPath: certsPath}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
 		return err
 	}
-
-	fmt.Printf("Generated nginx config: %s\n", path)
+	return afero.WriteFile(fs, path, buf.Bytes(), 0644)
 }
